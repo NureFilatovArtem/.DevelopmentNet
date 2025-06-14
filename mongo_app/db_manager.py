@@ -1,3 +1,4 @@
+# FILE: db_manager.py
 from pymongo import MongoClient
 from bson.binary import UUID, Binary, UUID_SUBTYPE
 from datetime import datetime
@@ -35,8 +36,9 @@ class DatabaseManager:
         """Get user by username"""
         return self.users.find_one({"UserName": username})
 
-    def add_note(self, title, text, user_id):
-        """Create a new note"""
+    # MODIFY THIS METHOD: Add location_coords parameter for new notes
+    def add_note(self, title, text, user_id, location_coords=None): # New: location_coords
+        """Create a new note, optionally with geolocation"""
         try:
             if not isinstance(user_id, Binary):
                 if isinstance(user_id, uuid.UUID):
@@ -54,6 +56,11 @@ class DatabaseManager:
                 "UpdatedAt": datetime.utcnow(),
                 "Status": "Активна"
             }
+            # Add location if provided
+            if location_coords and len(location_coords) == 2:
+                # Ensure coordinates are [longitude, latitude] as required by GeoJSON Point
+                note["location"] = {"type": "Point", "coordinates": [float(location_coords[0]), float(location_coords[1])]}
+
             self.notes.insert_one(note)
             return True, "Замітку успішно додано."
         except Exception as e:
@@ -77,8 +84,9 @@ class DatabaseManager:
                 note_id = Binary(uuid.UUID(note_id).bytes, UUID_SUBTYPE)
         return self.notes.find_one({"Id": note_id})
 
-    def update_note(self, note_id, title=None, text=None, status=None):
-        """Update an existing note"""
+    # MODIFY THIS METHOD: Allow updating location
+    def update_note(self, note_id, title=None, text=None, status=None, location_coords=None): # New: location_coords
+        """Update an existing note, optionally including geolocation"""
         try:
             if not isinstance(note_id, Binary):
                 if isinstance(note_id, uuid.UUID):
@@ -93,11 +101,30 @@ class DatabaseManager:
                 update_fields["Text"] = text
             if status is not None:
                 update_fields["Status"] = status
+            
+            # Handle location updates:
+            # If location_coords is a tuple/list, set it.
+            # If location_coords is an explicit False, unset (remove) the field.
+            # Otherwise (None), leave unchanged.
+            if location_coords is not None: # Changed to 'is not None' for boolean False check
+                if location_coords is False: # To remove location: pass False
+                    # Use $unset operator to remove a field
+                    self.notes.update_one({"Id": note_id}, {"$unset": {"location": ""}})
+                    # Ensure it's not set below if already unset
+                    if "location" in update_fields: del update_fields["location"]
+                elif len(location_coords) == 2:
+                    update_fields["location"] = {"type": "Point", "coordinates": [float(location_coords[0]), float(location_coords[1])]}
+                else:
+                     raise ValueError("Invalid location_coords: must be (lon, lat) tuple or False to unset.")
+
 
             result = self.notes.update_one(
                 {"Id": note_id},
-                {"$set": update_fields}
+                {"$set": update_fields} # Ensure update_fields doesn't contain conflicting operations (like $set for $unset)
             )
+            # If update was split (e.g. $unset for location)
+            # You might need to check multiple result objects or handle $unset outside of the main $set call.
+            # For simplicity, if we remove it, the $set won't apply to it.
             if result.matched_count > 0:
                 return True, "Замітку успішно оновлено."
             return False, "Замітку не знайдено."
@@ -151,3 +178,30 @@ class DatabaseManager:
         if status:
             query["Status"] = status
         return list(self.notes.find(query))
+    
+    # ADD NEW METHOD: Geospatial search
+    def find_notes_near_point(self, longitude, latitude, max_distance_meters):
+        """
+        Finds notes near a given point within a specified maximum distance.
+        :param longitude: The longitude of the center point.
+        :param latitude: The latitude of the center point.
+        :param max_distance_meters: The maximum distance from the center point in meters.
+        :return: A list of notes found near the point.
+        """
+        try:
+            query = {
+                "location": {
+                    "$nearSphere": {
+                        "$geometry": {
+                            "type": "Point",
+                            "coordinates": [longitude, latitude]
+                        },
+                        "$maxDistance": max_distance_meters
+                    }
+                }
+            }
+            # Returning all found notes; GUI will filter by current user if needed.
+            return list(self.notes.find(query))
+        except Exception as e:
+            print(f"Error during geospatial search: {e}")
+            return []
