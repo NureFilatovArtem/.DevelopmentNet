@@ -1,0 +1,3 @@
+"""
+MongoDB Notes Application Package
+""" 
