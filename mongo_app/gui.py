@@ -1,9 +1,9 @@
-
 import tkinter as tk
 from tkinter import ttk, messagebox
 from db_manager import DatabaseManager
 from bson.binary import UUID, Binary, UUID_SUBTYPE
 import uuid
+import webbrowser
 
 class NotesApp(tk.Tk):
     def __init__(self):
@@ -31,7 +31,6 @@ class NotesApp(tk.Tk):
         login_buttons_frame.grid(row=2, column=1, pady=10, sticky="e")
 
         ttk.Button(login_buttons_frame, text="Login", command=self._login).pack(side="left", padx=5)
-        # RENAMED from _register to _handle_registration to avoid TypeError
         ttk.Button(login_buttons_frame, text="Register", command=self._handle_registration).pack(side="left", padx=5)
 
     def _login(self):
@@ -48,7 +47,6 @@ class NotesApp(tk.Tk):
         else:
             messagebox.showerror("Login Failed", "Invalid username or password.")
 
-    # RENAMED from _register to _handle_registration to avoid TypeError
     def _handle_registration(self):
         username = self.username_entry.get()
         password = self.password_entry.get()
@@ -72,20 +70,18 @@ class NotesApp(tk.Tk):
         ttk.Label(notes_section, text=f"Notes for {self.current_user['UserName']}:", 
                  font=("Arial", 12, "bold")).pack(pady=10)
 
-        # ADD Latitude and Longitude columns to Treeview
         self.notes_tree = ttk.Treeview(notes_section, columns=("Title", "Status", "Lon", "Lat"), show="headings")
         self.notes_tree.heading("Title", text="Title")
         self.notes_tree.heading("Status", text="Status")
-        self.notes_tree.heading("Lon", text="Lon") # New column
-        self.notes_tree.heading("Lat", text="Lat") # New column
+        self.notes_tree.heading("Lon", text="Lon")
+        self.notes_tree.heading("Lat", text="Lat")
         self.notes_tree.column("Title", width=250)
         self.notes_tree.column("Status", width=80)
-        self.notes_tree.column("Lon", width=70) # Set width for new column
-        self.notes_tree.column("Lat", width=70) # Set width for new column
+        self.notes_tree.column("Lon", width=70)
+        self.notes_tree.column("Lat", width=70)
         self.notes_tree.pack(expand=True, fill="both")
         self.notes_tree.bind("<<TreeviewSelect>>", self._on_note_select)
 
-        # Section for editing/creating notes
         edit_note_section = ttk.LabelFrame(self.main_app_frame, text="Note Details", padding="10")
         edit_note_section.pack(fill="x", pady=10)
 
@@ -97,7 +93,6 @@ class NotesApp(tk.Tk):
         self.note_text_entry = tk.Text(edit_note_section, height=5, width=50)
         self.note_text_entry.grid(row=1, column=1, pady=2, sticky="ew")
         
-        # ADD NEW FIELDS FOR LOCATION (Lon, Lat)
         location_frame = ttk.Frame(edit_note_section)
         location_frame.grid(row=2, column=1, pady=2, sticky="w")
         ttk.Label(edit_note_section, text="Location:").grid(row=2, column=0, pady=2, sticky="w")
@@ -110,15 +105,15 @@ class NotesApp(tk.Tk):
         self.note_lat_entry = ttk.Entry(location_frame, width=15)
         self.note_lat_entry.pack(side="left", padx=2)
 
-        edit_note_section.grid_columnconfigure(1, weight=1) # Allow column 1 to expand
+        edit_note_section.grid_columnconfigure(1, weight=1)
 
         button_frame = ttk.Frame(edit_note_section); button_frame.grid(row=3, column=0, columnspan=2, pady=10)
         ttk.Button(button_frame, text="New Note", command=self._new_note).pack(side="left", padx=5)
         ttk.Button(button_frame, text="Save", command=self._save_note).pack(side="left", padx=5)
         ttk.Button(button_frame, text="Delete", command=self._delete_note).pack(side="left", padx=5)
+        ttk.Button(button_frame, text="Відкрити на карті", command=self._open_note_location_on_map).pack(side="left", padx=5)
         ttk.Button(button_frame, text="Logout", command=self._logout).pack(side="right", padx=5)
 
-        # Existing Search section
         search_section = ttk.LabelFrame(self.main_app_frame, text="Search & Aggregation", padding="10")
         search_section.pack(fill="x", pady=10)
 
@@ -135,7 +130,6 @@ class NotesApp(tk.Tk):
 
         self.notes_count_label = ttk.Label(search_section, text=""); self.notes_count_label.pack(anchor="w", pady=5)
         
-        # ADD NEW GEOSPATIAL SEARCH SECTION
         geo_search_frame = ttk.LabelFrame(search_section, text="Geospatial Search", padding="10")
         geo_search_frame.pack(fill="x", pady=5)
 
@@ -146,10 +140,9 @@ class NotesApp(tk.Tk):
         ttk.Label(geo_search_frame, text="Max Distance (km):").grid(row=1, column=0, padx=5, pady=2, sticky="w")
         self.geo_dist_entry = ttk.Entry(geo_search_frame, width=15); self.geo_dist_entry.grid(row=1, column=1, padx=5, pady=2, sticky="ew")
         ttk.Button(geo_search_frame, text="Find Near", command=self._find_notes_near).grid(row=1, column=2, columnspan=2, padx=5, pady=5, sticky="ew")
-        geo_search_frame.grid_columnconfigure(1, weight=1); geo_search_frame.grid_columnconfigure(3, weight=1) # Allow expansion
+        geo_search_frame.grid_columnconfigure(1, weight=1); geo_search_frame.grid_columnconfigure(3, weight=1)
 
         self._refresh_notes_list(); self._update_notes_count()
-
 
     def _refresh_notes_list(self):
         for item in self.notes_tree.get_children(): self.notes_tree.delete(item)
@@ -162,15 +155,12 @@ class NotesApp(tk.Tk):
                 lat_val = round(loc["coordinates"][1], 4) if loc else ""
                 lon_val = round(loc["coordinates"][0], 4) if loc else ""
                 self.notes_tree.insert("", "end", iid=uuid_str, 
-                                     values=(note["Title"], note.get("Status", "Активна"), lon_val, lat_val)) # Display Lon, Lat
-        
-        # After refreshing, clear general search fields
+                                     values=(note["Title"], note.get("Status", "Активна"), lon_val, lat_val))
         self.search_keyword_entry.delete(0, tk.END)
         self.search_status_entry.delete(0, tk.END)
-        self.geo_lon_entry.delete(0, tk.END) # Clear geo fields
+        self.geo_lon_entry.delete(0, tk.END)
         self.geo_lat_entry.delete(0, tk.END)
         self.geo_dist_entry.delete(0, tk.END)
-
 
     def _update_notes_count(self):
         if self.current_user:
@@ -181,19 +171,15 @@ class NotesApp(tk.Tk):
     def _on_note_select(self, event):
         selected_item = self.notes_tree.focus()
         if selected_item:
-            # The iid is now a hex string. Convert back to UUID, then to Binary.
             note_uuid = uuid.UUID(selected_item)
             note_id_binary = Binary(note_uuid.bytes, UUID_SUBTYPE)
-            self.current_note_id = note_id_binary # Store as Binary
-
+            self.current_note_id = note_id_binary
             note = self.db_manager.get_note_by_id(note_id_binary)
             if note:
                 self.note_title_entry.delete(0, tk.END)
                 self.note_title_entry.insert(0, note["Title"])
                 self.note_text_entry.delete("1.0", tk.END)
                 self.note_text_entry.insert("1.0", note["Text"])
-                
-                # Populate location fields
                 location_data = note.get("location")
                 self.note_lon_entry.delete(0, tk.END); self.note_lat_entry.delete(0, tk.END)
                 if location_data and "coordinates" in location_data:
@@ -205,7 +191,7 @@ class NotesApp(tk.Tk):
     def _new_note(self):
         self.current_note_id = None
         self.note_title_entry.delete(0, tk.END); self.note_text_entry.delete("1.0", tk.END)
-        self.note_lon_entry.delete(0, tk.END); self.note_lat_entry.delete(0, tk.END) # Clear location fields
+        self.note_lon_entry.delete(0, tk.END); self.note_lat_entry.delete(0, tk.END)
         messagebox.showinfo("New Note", "Поля очищено. Введіть дані для нової замітки.")
 
     def _save_note(self):
@@ -223,7 +209,7 @@ class NotesApp(tk.Tk):
             except ValueError:
                 messagebox.showwarning("Location Error", "Координати Longitude та Latitude мають бути числами.")
                 return
-        elif lon_str or lat_str: # If one is filled and other isn't
+        elif lon_str or lat_str:
             messagebox.showwarning("Location Error", "Введіть обидві координати (Longitude та Latitude) або залиште обидві порожніми.")
             return
 
@@ -231,19 +217,19 @@ class NotesApp(tk.Tk):
             messagebox.showwarning("Warning", "Title and Text cannot be empty.")
             return
 
-        if self.current_note_id: # Update existing note
+        if self.current_note_id:
             success, msg = self.db_manager.update_note(self.current_note_id, title=title, text=text, location_coords=location_coords)
             if success:
                 messagebox.showinfo("Success", msg)
-                self._new_note()  # Reset fields and current_note_id after update
+                self._new_note()
             else:
                 messagebox.showerror("Error", msg)
-        else: # Add new note
+        else:
             if self.current_user:
-                success, msg = self.db_manager.add_note(title, text, self.current_user["Id"], location_coords=location_coords) # Pass coordinates
+                success, msg = self.db_manager.add_note(title, text, self.current_user["Id"], location_coords=location_coords)
                 if success:
                     messagebox.showinfo("Success", msg)
-                    self._new_note()  # Reset fields and current_note_id after add
+                    self._new_note()
                 else:
                     messagebox.showerror("Error", msg)
             else:
@@ -290,30 +276,32 @@ class NotesApp(tk.Tk):
             messagebox.showinfo("Search Result", "Заміток за вашим запитом не знайдено.")
             self._new_note()
 
-    # ADD NEW FUNCTION: Geospatial search
+    def _open_note_location_on_map(self):
+        lon_str = self.note_lon_entry.get().strip()
+        lat_str = self.note_lat_entry.get().strip()
+        if not lon_str or not lat_str:
+            messagebox.showwarning("Location", "Введіть координати для відкриття на карті.")
+            return
+        try:
+            lon = float(lon_str)
+            lat = float(lat_str)
+            url = f"https://www.google.com/maps/search/?api=1&query={lat},{lon}"
+            webbrowser.open(url)
+        except ValueError:
+            messagebox.showerror("Location Error", "Координати мають бути числами.")
+
     def _find_notes_near(self):
         try:
             center_lon = float(self.geo_lon_entry.get())
             center_lat = float(self.geo_lat_entry.get())
-            max_distance_km = float(self.geo_dist_entry.get()) # User inputs in kilometers
-            max_distance_meters = max_distance_km * 1000 # Convert to meters for MongoDB
-
-            # Clear Treeview before displaying geospatial search results
+            max_distance_km = float(self.geo_dist_entry.get())
+            max_distance_meters = max_distance_km * 1000
             for item in self.notes_tree.get_children(): self.notes_tree.delete(item)
-
             found_notes = self.db_manager.find_notes_near_point(center_lon, center_lat, max_distance_meters)
-            
-            # Filter to show only notes of the current user (if current_user is set)
             current_user_id_binary = self.current_user["Id"] if self.current_user and isinstance(self.current_user["Id"], Binary) else None
-            
-            # Convert _data back to uuid.UUID for comparison as 'current_user["Id"]' is Binary.
-            # Comparison needs to be correct (Binary == Binary or convert both to hex string)
-            # Python comparison `Binary == Binary` works if their raw bytes are identical.
-            
             filtered_notes = [
                 note for note in found_notes if self.current_user and note["UserId"] == current_user_id_binary
             ]
-            
             if filtered_notes:
                 for note in filtered_notes:
                     uuid_str = uuid.UUID(bytes=bytes(note["Id"])).hex if isinstance(note["Id"], Binary) else str(note["Id"])
@@ -325,10 +313,7 @@ class NotesApp(tk.Tk):
                 messagebox.showinfo("Geospatial Search Result", f"Знайдено {len(filtered_notes)} заміток поруч для поточного користувача.")
             else:
                 messagebox.showinfo("Geospatial Search Result", "Заміток поруч не знайдено для поточного користувача.")
-            
-            self._new_note() # Clear note detail fields
-            # _update_notes_count is not called as this is a specific search result, not all user's notes.
-
+            self._new_note()
         except ValueError:
             messagebox.showerror("Input Error", "Будь ласка, введіть дійсні числа для координат та дистанції.")
         except Exception as e:
